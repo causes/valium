@@ -37,15 +37,20 @@ module Valium
     end # Minor version check
 
     def value_of(*attr_names)
-      attr_names.map! do |attr_name|
-        attr_name = attr_name.to_s
-        attr_name == 'id' ? primary_key : attr_name
-      end
-
-      if attr_names.size > 1
-        valium_select_multiple(attr_names)
+      if attr_names.first.is_a?(Hash)
+        attr_name = attr_names.first.symbolize_keys![:distinct].to_s
+        valium_select_one(attr_name, true)
       else
-        valium_select_one(attr_names.first)
+        attr_names.map! do |attr_name|
+          attr_name = attr_name.to_s
+          attr_name == 'id' ? primary_key : attr_name
+        end
+
+        if attr_names.size > 1
+          valium_select_multiple(attr_names)
+        else
+          valium_select_one(attr_names.first)
+        end
       end
     end
 
@@ -64,12 +69,12 @@ module Valium
       end
     end
 
-    def valium_select_one(attr_name)
+    def valium_select_one(attr_name, distinct = false)
       column = columns_hash[attr_name]
       coder  = serialized_attributes[attr_name]
 
       connection.select_rows(
-        except(:select).select(arel_table[attr_name]).to_sql
+        except(:select).select(distinct ? "distinct(#{attr_name})" : arel_table[attr_name]).to_sql
       ).map! do |values|
         valium_cast(values[0], column, coder)
       end
@@ -88,8 +93,11 @@ module Valium
     module ValueOf
       def value_of(*args)
         args.map! do |attr_name|
-          attr_name = attr_name.to_s
-          attr_name == 'id' ? klass.primary_key : attr_name
+          if not attr_name.is_a?(Hash)
+            attr_name = attr_name.to_s
+            attr_name == 'id' ? klass.primary_key : attr_name
+          end
+          attr_name
         end
 
         if loaded? && (empty? || args.all? {|a| first.attributes.has_key? a})
